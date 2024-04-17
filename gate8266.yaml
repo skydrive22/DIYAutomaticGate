@@ -1,0 +1,165 @@
+esphome:
+  name: gate8266
+  friendly_name: Gate8266
+
+esp8266:
+  board: nodemcuv2
+  framework:
+    version: recommended
+
+mqtt:
+  broker: 192.168.0.31
+  port: 1883
+  topic_prefix: gate8266
+  client_id: gate8266
+  username: mqtt-broker
+  password: !secret mqtt_password
+
+logger:
+  baud_rate: 9600
+  level: DEBUG
+  esp8266_store_log_strings_in_flash: False
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Gate8266 Fallback Hotspot"
+    password: "vgleI9haVXjf"
+
+switch:
+  - platform: gpio
+    pin:
+      number: D1
+    name: "DIR1"
+    id: gateMotorDIR1
+
+  - platform: gpio
+    pin:
+      number: D5
+    name: "PWM1"
+    id: gateMotorPWM1
+
+  - platform: gpio
+    pin:
+      number: D2
+    name: "DIR2"
+    id: gateMotorDIR2
+
+  - platform: gpio
+    pin:
+      number: D6
+    name: "PWM2"
+    id: gateMotorPWM2
+
+script:
+  - id: gateTimerScript
+    then:
+      - logger.log: "Starting 3-minute countdown to close cover"
+      - delay: 180s
+      - logger.log: "Closing cover after 3 minutes"
+      - cover.close: gateCover
+
+  - id: countdown_timer
+    then:
+      - logger.log: "3 minutes remaining"
+      - delay: 1min
+      - logger.log: "2 minutes remaining"
+      - delay: 1min
+      - logger.log: "1 minute remaining"
+      - delay: 30s
+      - logger.log: "30 seconds remaining"
+      - delay: 10s
+      - logger.log: "20 seconds remaining"
+      - delay: 10s
+      - logger.log: "10 seconds remaining"
+      - delay: 1s
+      - logger.log: "9 seconds remaining"
+      - delay: 1s
+      - logger.log: "8 seconds remaining"
+      - delay: 1s
+      - logger.log: "7 seconds remaining"
+      - delay: 1s
+      - logger.log: "6 seconds remaining"
+      - delay: 1s
+      - logger.log: "5 seconds remaining"
+      - delay: 1s
+      - logger.log: "4 seconds remaining"
+      - delay: 1s
+      - logger.log: "3 seconds remaining"
+      - delay: 1s
+      - logger.log: "2 seconds remaining"
+      - delay: 1s
+      - logger.log: "1 second remaining"
+      - delay: 1s
+
+cover:
+  - platform: endstop
+    name: "Gate"
+    id: gateCover
+    open_action:
+      - switch.turn_off: gateMotorDIR1
+      - switch.turn_on: gateMotorPWM1
+      - script.execute: gateTimerScript
+      - logger.log: countdown_timer
+    open_endstop: gateMotor1OpenEndstop
+    open_duration: 1min
+    
+
+    close_action:
+      - switch.turn_on: gateMotorDIR1
+      - switch.turn_on: gateMotorPWM1
+    close_endstop: gateMotor1CloseEndstop
+    close_duration: 1min
+
+    stop_action:
+      - switch.turn_off: gateMotorPWM1
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: D7
+      mode: INPUT_PULLUP
+      inverted: True
+    name: "Motor 1 Open Endstop"
+    id: gateMotor1OpenEndstop
+
+  - platform: gpio
+    pin:
+      number: D8
+      mode: INPUT_PULLUP
+      inverted: False
+    name: "Motor 1 Close Endstop"
+    id: gateMotor1CloseEndstop
+
+  - platform: gpio
+    pin:
+      number: D3
+      inverted: true
+      mode:
+        input: true
+    name: "Gate Button"
+    device_class: garage_door
+    filters:
+      - delayed_on: 10ms
+    on_press:
+      then:
+        lambda: |-
+          if (id(gateCover).current_operation == CoverOperation::COVER_OPERATION_IDLE) {
+            if (id(gateCover).is_fully_closed()){
+              id(gateCover).open();
+            }
+            else {
+              id(gateCover).close();
+            }
+          }
+          else {
+            id(gateCover).stop();
+          }
